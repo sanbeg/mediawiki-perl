@@ -1,6 +1,7 @@
 package FrameworkAPI;
 use Carp;
 use MediaWiki::API;
+use strict;
 
 sub new ($;$$) {
     my ($class,$site,$path)=@_;
@@ -9,6 +10,7 @@ sub new ($;$$) {
 	$path = 'w' unless defined $path;
 	$mw->{config}->{api_url} = "http://$site/$path/api.php";
     }
+    $mw->{ua}->cookie_jar({file=>"$ENV{HOME}/.cookies.txt"});
     bless {0=>$mw, write_prefix=>''}, $class;
 }
 
@@ -18,6 +20,19 @@ sub login ($$$) {
     $mw->login( { lgname => $user, lgpassword => $pass } )
     or croak $mw->{error}->{code} . ': ' . $mw->{error}->{details};
 }
+
+
+sub _groups {
+    my $mw = shift;
+    my $r = $mw->{0}->api({action=>'query', prop=>'userinfo', uiprop=>'groups'});
+#    print "$_\n" for @{$r};
+    print "groups:\n";
+    foreach my $g (@{$r->{query}{userinfo}{groups}}) {
+	print "in group $g\n";
+    };
+};
+
+    
 
 sub get_text( $$ ) {
     my ($self,$title) = @_;
@@ -31,6 +46,8 @@ sub get_text( $$ ) {
 sub edit( $$$ ) {
     my ($self,$title,$text,$summary) = @_;
     my $mw = $self->{0};
+    
+    die "goodbye cruel world";
 
     $mw->edit({
 	action=>'edit', bot=>1,
@@ -44,9 +61,9 @@ sub edit( $$$ ) {
     package FrameworkAPI::Page;
 
     sub new ($$$) {
-	my ($class,$self,$title) = @_;
-	my $page = $self->{0}->get_page({title=>$title});
-	bless [$self,$page], $class;
+	my ($class,$api,$title) = @_;
+	my $page = $api->{0}->get_page({title=>$title});
+	bless [$api,$page], $class;
     }
 
     sub get_text( $$ ) {
@@ -59,15 +76,23 @@ sub edit( $$$ ) {
 	my $page = $self->[1];
 	my $p = $mw->{write_prefix};
 
-	$mw->edit({
-	    action=>'edit', bot=>1,
-	    title=>$page->{title},
-	    text=>$p.$text,
-	    basetimestamp=>$page->{timestamp},
+	my %qh = (
+	    action=>'edit', 
+	    bot=>1,
+	    title=>($p.$page->{title}),
+	    text=>$text,
 	    summary=>$summary,
-		  }) 
-	    or croak $mw->{error}->{code} . ': ' . $mw->{error}->{details};
-    }
+	    );
+	$qh{basetimestamp}=$page->{timestamp} if $p eq '';
+
+	eval {
+	    warn "edit $qh{title}";
+ 	    $mw->{0}->edit(\%qh) 
+ 		or croak $mw->{error}->{code} . ': ' . $mw->{error}->{details};
+	};
+	
+	Carp::croak "Edit failed: $@" if $@;
+    };
     
     sub exists {
 	my ($self) = @_;
