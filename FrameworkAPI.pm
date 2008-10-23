@@ -10,29 +10,35 @@ sub new ($;$$) {
 	$path = 'w' unless defined $path;
 	$mw->{config}->{api_url} = "http://$site/$path/api.php";
     }
-    $mw->{ua}->cookie_jar({file=>"$ENV{HOME}/.cookies.txt"});
+    #$mw->{ua}->cookie_jar({file=>"$ENV{HOME}/.cookies.txt", autosave=>1});
     bless {0=>$mw, write_prefix=>''}, $class;
+}
+
+sub cookie_jar( $$ ) {
+    #temporary method for persistent login.
+    my $self = shift;
+    my $file = shift;
+    $self->{0}{ua}->cookie_jar($file, autosave=>1);
 }
 
 sub login ($$$) {
     my ($self,$user,$pass) = @_;
     my $mw = $self->{0};
-    $mw->login( { lgname => $user, lgpassword => $pass } )
-    or croak $mw->{error}->{code} . ': ' . $mw->{error}->{details};
+
+    my $state = $mw->api({ action=>'query', meta=>'userinfo', });
+    
+    if (
+	 ! exists $state->{query}{userinfo}{anon}
+	and
+	$state->{query}{userinfo}{name} eq $user
+	){ 
+	warn "already logged in as $user";
+    } else {
+	$mw->login( { lgname => $user, lgpassword => $pass } )
+	    or croak $mw->{error}->{code} . ': ' . $mw->{error}->{details};
+    }
 }
 
-
-sub _groups {
-    my $mw = shift;
-    my $r = $mw->{0}->api({action=>'query', prop=>'userinfo', uiprop=>'groups'});
-#    print "$_\n" for @{$r};
-    print "groups:\n";
-    foreach my $g (@{$r->{query}{userinfo}{groups}}) {
-	print "in group $g\n";
-    };
-};
-
-    
 
 sub get_text( $$ ) {
     my ($self,$title) = @_;
